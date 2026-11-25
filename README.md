@@ -1,4 +1,4 @@
-# Reverie · 时间长河
+# Memory River · 时间长河
 
 完整 React + Three.js 项目，包含照片河流、滚动镜头、背景音乐和终点光点烟花。
 当前版本保留最近一次调整：镜头距离 8、高度 6、照片基准间距 7、屏幕防遮挡和光点烟花。
@@ -50,9 +50,9 @@ npm run dev
 4. 在 CodeSandbox 中拉取 / 同步同一分支的最新提交。仅保存本地文件不会触发远程同步。
 5. 如果你在 CodeSandbox 也修改了代码，先 commit / push，再在本地 pull 后继续修改，避免覆盖。
 
-仓库：https://github.com/201870041/Reverie
-工作分支：`codex/memory-river`（`main` 暂时保留原始版本）。
-CodeSandbox 导入链接：https://codesandbox.io/p/github/201870041/Reverie/tree/codex/memory-river
+仓库：https://github.com/201870041/Memory_River
+工作分支：`main`。原 `Reverie` 仓库保持原样，后续更新在 `Memory_River` 进行。
+CodeSandbox 导入链接：https://codesandbox.io/p/github/201870041/Memory_River
 
 本地和远端配置完成后，后续在这个聊天里请求修改，我会检查后将需要同步的改动提交到工作分支。
 CodeSandbox 端请使用同一分支并拉取最新提交。这里没有启用后台监视、自动提交或自动推送；修改完成后的同步是一次明确的 Git 提交和推送。
