@@ -2,7 +2,7 @@
 
 A complete React + Three.js project featuring a winding photo river, a scroll-controlled camera, background music, and a soft particle fireworks finale.
 
-The current version includes broader river bends, a camera distance of 8, a camera height of 6, a baseline photo spacing of 7, and stable screen-space visibility to reduce overlap and flickering.
+The current version includes broader river bends, a camera distance of 8, a camera height of 6, a baseline photo spacing of 4.6, and a continuous photo sequence in upload order. Photos stay fixed and opaque along the river; camera movement no longer triggers visibility selection or fade-in.
 
 ## Use in CodeSandbox
 
@@ -22,7 +22,7 @@ Do not mix this project's entry files with an older template's `src/index.js` or
 ## Project Files
 
 - `src/App.jsx`: Main application, including photo placement, river geometry, camera movement, and particle effects.
-- `src/photoVisibility.js`: Stable photo selection and opacity transitions that reduce overlap and flickering.
+- `src/photoRiver.js`: Shared layout settings, the winding path, fixed photo poses, and frame clearance checks.
 - `src/index.jsx`: React entry point.
 - `src/styles.css`: Global styles.
 - `index.html`: HTML entry point.
@@ -30,7 +30,7 @@ Do not mix this project's entry files with an older template's `src/index.js` or
 - `package.json` / `package-lock.json`: Dependencies and application commands.
 - `vite.config.js`: Development server configuration.
 - `.codesandbox/tasks.json`: CodeSandbox development task.
-- `scripts/photo-visibility.test.js`: Regression tests for photo visibility transitions.
+- `scripts/river-layout.test.js`: Regression tests for photo order, stable poses, and frame clearance.
 - `scripts/package-project.py`: Rebuilds the CodeSandbox ZIP archive from the current source files.
 
 ## Run Locally
@@ -44,10 +44,10 @@ npm run dev
 
 Build the production application with `npm run build`. The output is written to `dist/`.
 
-Run the visibility regression tests:
+Run the river layout regression tests:
 
 ```sh
-node --test scripts/photo-visibility.test.js
+node --test scripts/river-layout.test.js
 ```
 
 Rebuild the upload archive with Python:
@@ -80,6 +80,8 @@ There is no background file watcher, automatic commit service, or automatic push
 ## Photos and Music
 
 Photos and music are selected in the browser at runtime and accessed through local object URLs. The application does not save selected files to GitHub.
+
+The sequence follows the file order supplied by the browser file picker, which may depend on the operating system. All selected photo textures load together before the journey proceeds; scrolling does not load or reveal photos one at a time. Natural perspective can still cause a nearer photo to obscure a distant one.
 
 Select your files again after refreshing the preview. Photos currently use a fixed 4:3 display frame, so portrait images may be cropped.
 

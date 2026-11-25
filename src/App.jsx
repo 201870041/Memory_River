@@ -1,7 +1,7 @@
-import { updatePhotoSelection } from "./photoVisibility.js";
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import { CONFIG, createRiverPath, createPhotoPose } from "./photoRiver.js";
+import React, { useState, useRef, useEffect, useMemo, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Image, Stars, Sparkles } from "@react-three/drei";
+import { Image, Stars, Sparkles, Html, useProgress } from "@react-three/drei";
 import * as THREE from "three";
 import {
   EffectComposer,
@@ -10,161 +10,20 @@ import {
   Noise,
 } from "@react-three/postprocessing";
 
-// 照片几何、路径和镜头共用同一套尺寸。
-const CONFIG = {
-  PHOTO_WIDTH: 4.4,
-  PHOTO_HEIGHT: 3.4,
-  PHOTO_DEPTH: 0.08,
-  PHOTO_SPACING: 7,
-  PHOTO_CLEARANCE: 1.2,
-  CAMERA_DISTANCE: 8,
-  CAMERA_HEIGHT: 6,
-  LOOK_AHEAD: 1.5,
-  CAMERA_RESPONSE: 5,
-  SCREEN_GAP_PX: 12,
-  MIN_WAVE_CYCLES: 1.1,
-  MAX_WAVE_CYCLES: 7,
-  PHOTOS_PER_WAVE: 30,
-  LATERAL_SWAY: 0.85,
-};
-
-// 连续、低频、非共面的曲线；照片数量只影响长度和缓弯次数。
-const createRiverPath = (photoCount) => {
-  const count = Math.max(2, photoCount);
-  const desiredLength = CONFIG.PHOTO_SPACING * (count - 1);
-  const waveCycles = Math.min(
-    CONFIG.MAX_WAVE_CYCLES,
-    Math.max(CONFIG.MIN_WAVE_CYCLES, photoCount / CONFIG.PHOTOS_PER_WAVE)
+function FilmFrame({ url, index, total, riverCurve }) {
+  const pose = useMemo(
+    () => createPhotoPose(index, total, riverCurve),
+    [index, total, riverCurve]
   );
-  const amplitude = Math.min(16, Math.max(2, Math.sqrt(desiredLength) * CONFIG.LATERAL_SWAY));
-  const height = Math.min(5, Math.max(1, Math.sqrt(desiredLength) * 0.23));
-  const sampleCount = Math.min(2048, Math.max(128, count * 4));
-  const points = Array.from({ length: sampleCount + 1 }, (_, i) => {
-    const t = i / sampleCount;
-    const phase = t * Math.PI * 2;
-    return new THREE.Vector3(
-      amplitude * (Math.sin(phase * waveCycles) + 0.2 * Math.sin(phase * waveCycles * 1.55 + 0.7)),
-      height * (Math.sin(phase * waveCycles * 0.63 + 0.4) + 0.25 * Math.sin(phase * 1.3)),
-      (t - 0.5) * desiredLength
-    );
-  });
-  const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-  curve.arcLengthDivisions = Math.max(1000, sampleCount * 4);
-  const initialLength = curve.getLength();
-  points.forEach((p) => p.multiplyScalar(desiredLength / initialLength));
-  curve.updateArcLengths();
-
-  // 用包围球检查所有照片对。倾角改变也不会导致实体相交。
-  const positions = Array.from({ length: photoCount }, (_, i) =>
-    curve.getPointAt(photoCount === 1 ? 0.5 : i / (photoCount - 1))
-  );
-  let minDistance = Infinity;
-  for (let i = 0; i < positions.length; i++) {
-    for (let j = i + 1; j < positions.length; j++) {
-      minDistance = Math.min(minDistance, positions[i].distanceTo(positions[j]));
-    }
-  }
-  const safeDistance = Math.hypot(CONFIG.PHOTO_WIDTH, CONFIG.PHOTO_HEIGHT, CONFIG.PHOTO_DEPTH) + CONFIG.PHOTO_CLEARANCE;
-  if (minDistance < safeDistance) {
-    points.forEach((p) => p.multiplyScalar(safeDistance / minDistance * 1.001));
-    curve.updateArcLengths();
-  }
-  const riverLength = curve.getLength();
-  const bounds = new THREE.Box3().setFromPoints(points);
-  return {
-    curve,
-    riverLength,
-    spacing: photoCount > 1 ? riverLength / (photoCount - 1) : 0,
-    waveFrequency: waveCycles,
-    waveAmplitude: (bounds.max.x - bounds.min.x) / 2,
-    verticalRange: bounds.max.y - bounds.min.y,
-  };
-};
-
-function FilmFrame({ url, index, total, riverCurve, framesRef }) {
-  const group = useRef();
-  const image = useRef();
-  const backing = useRef();
-  const pose = useMemo(() => {
-    const t = total === 1 ? 0.5 : index / (total - 1);
-    const position = riverCurve.getPointAt(t);
-    const tangent = riverCurve.getTangentAt(t).normalize();
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const right = tangent.clone().cross(worldUp).normalize();
-    // 像沿河摆放的相片，轻轻抬起一端，并保留可读的正面。
-    const normal = worldUp.clone().multiplyScalar(0.8).addScaledVector(tangent, -0.6).normalize();
-    const up = normal.clone().cross(right).normalize();
-    normal.copy(right).cross(up).normalize();
-    const rotation = new THREE.Quaternion().setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(right, up, normal)
-    );
-    rotation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(
-      Math.sin(index * 1.7) * 0.045, 0, Math.sin(index * 2.1) * 0.065
-    )));
-    return { position, rotation };
-  }, [index, total, riverCurve]);
-
-  useEffect(() => {
-    const entry = { group: group.current, image: image.current, backing: backing.current, opacity: 0, selected: false, selectionOrder: 0 };
-    framesRef.current[index] = entry;
-    return () => { if (framesRef.current[index] === entry) delete framesRef.current[index]; };
-  }, [index, framesRef]);
-
   return (
-    <group ref={group} position={pose.position} quaternion={pose.rotation} visible={false}>
+    <group position={pose.position} quaternion={pose.rotation}>
       <mesh position={[0, 0, -CONFIG.PHOTO_DEPTH / 2]}>
         <boxGeometry args={[CONFIG.PHOTO_WIDTH, CONFIG.PHOTO_HEIGHT, CONFIG.PHOTO_DEPTH]} />
-        <meshStandardMaterial ref={backing} color="#18202c" roughness={0.55} metalness={0.15} transparent opacity={0} depthWrite={false} />
+        <meshStandardMaterial color="#18202c" roughness={0.55} metalness={0.15} />
       </mesh>
-      <Image ref={image} url={url} position={[0, 0, 0.006]} scale={[4, 3]} transparent opacity={0} depthWrite={false} toneMapped={false} />
+      <Image url={url} position={[0, 0, 0.015]} scale={[4, 3]} transparent={false} opacity={1} toneMapped={false} />
     </group>
   );
-}
-
-// 保留已显示照片的优先级，并在接近重叠之前渐隐，避免边界反复闪烁。
-function PhotoVisibility({ framesRef }) {
-  const { camera, size } = useThree();
-  const scratch = useMemo(() => ({ point: new THREE.Vector3(), view: new THREE.Vector3(), nextOrder: 0 }), []);
-  useFrame((_, delta) => {
-    camera.updateMatrixWorld();
-    const candidates = [];
-    for (const entry of framesRef.current) {
-      if (!entry?.group || !entry.image?.material) continue;
-      const root = entry.group;
-      root.updateWorldMatrix(true, false);
-      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
-      let valid = true;
-      for (const x of [-CONFIG.PHOTO_WIDTH / 2, CONFIG.PHOTO_WIDTH / 2]) {
-        for (const y of [-CONFIG.PHOTO_HEIGHT / 2, CONFIG.PHOTO_HEIGHT / 2]) {
-          for (const z of [-CONFIG.PHOTO_DEPTH, 0.01]) {
-            scratch.point.set(x, y, z).applyMatrix4(root.matrixWorld);
-            scratch.view.copy(scratch.point).applyMatrix4(camera.matrixWorldInverse);
-            if (scratch.view.z >= -camera.near) valid = false;
-            scratch.point.project(camera);
-            const px = (scratch.point.x + 1) * size.width / 2;
-            const py = (1 - scratch.point.y) * size.height / 2;
-            left = Math.min(left, px); right = Math.max(right, px);
-            top = Math.min(top, py); bottom = Math.max(bottom, py);
-          }
-        }
-      }
-      const distance = camera.position.distanceTo(root.position);
-      if (!valid || right < 0 || left > size.width || bottom < 0 || top > size.height || distance > 75) {
-        root.visible = false;
-        entry.selected = false;
-        entry.opacity = 0;
-        continue;
-      }
-      candidates.push({ entry, left, right, top, bottom, distance });
-    }
-    updatePhotoSelection(candidates, scratch, CONFIG.SCREEN_GAP_PX, delta);
-    for (const { entry } of candidates) {
-      entry.group.visible = entry.opacity > 0.005;
-      entry.image.material.opacity = entry.opacity;
-      entry.backing.opacity = entry.opacity;
-    }
-  }, -1);
-  return null;
 }
 
 // 3. 终点烟花：一组柔和小光点，避免大球体下坠的观感。
@@ -269,6 +128,7 @@ function RailController({
   onCameraUpdate,
 }) {
   const { camera, gl } = useThree();
+  const assetsLoading = useProgress((state) => state.active);
   const state = useRef({ progress: 0, velocity: 0 });
   const SENSITIVITY = 0.0025;
   const MAX_SPEED = 0.14;
@@ -284,6 +144,7 @@ function RailController({
   }, [gl]);
 
   useFrame((_, delta) => {
+    if (assetsLoading) return;
     const s = state.current;
     if (s.velocity > MAX_SPEED) s.velocity = MAX_SPEED;
     if (s.velocity < -MAX_SPEED) s.velocity = -MAX_SPEED;
@@ -401,7 +262,6 @@ export default function App() {
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [cameraPos, setCameraPos] = useState(null);
 
-  const framesRef = useRef([]);
   const cyanRef = useRef();
   const pinkRef = useRef();
   const purpleRef = useRef();
@@ -538,7 +398,7 @@ export default function App() {
         <div>↕️ Height Range: {riverData.verticalRange.toFixed(1)} units</div>
       </div>
 
-      <Canvas camera={{ fov: 50, near: 0.1, far: 1000 }}>
+      <Canvas camera={{ fov: 50, near: 0.1, far: Math.max(1000, riverData.riverLength * 2) }}>
         <color attach="background" args={["#020010"]} />
         <ambientLight intensity={0.2} />
         <pointLight
@@ -616,18 +476,17 @@ export default function App() {
 
         <Fireworks progress={journeyProgress} cameraPosition={cameraPos} />
 
-        {imageUrls.map((url, index) => (
-          <FilmFrame
-            key={index}
-            url={url}
-            index={index}
-            total={imageUrls.length}
-            riverCurve={riverData.curve}
-            framesRef={framesRef}
-          />
-        ))}
-
-        <PhotoVisibility framesRef={framesRef} />
+        <Suspense fallback={<Html center style={{ color: "white", whiteSpace: "nowrap" }}>Loading photos…</Html>}>
+          {imageUrls.map((url, index) => (
+            <FilmFrame
+              key={index}
+              url={url}
+              index={index}
+              total={imageUrls.length}
+              riverCurve={riverData.curve}
+            />
+          ))}
+        </Suspense>
 
         <EffectComposer disableNormalPass>
           <Bloom
