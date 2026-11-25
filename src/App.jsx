@@ -1,3 +1,4 @@
+import { updatePhotoSelection } from "./photoVisibility.js";
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Image, Stars, Sparkles } from "@react-three/drei";
@@ -97,7 +98,7 @@ function FilmFrame({ url, index, total, riverCurve, framesRef }) {
   }, [index, total, riverCurve]);
 
   useEffect(() => {
-    const entry = { group: group.current, image: image.current, backing: backing.current, opacity: 0 };
+    const entry = { group: group.current, image: image.current, backing: backing.current, opacity: 0, selected: false, selectionOrder: 0 };
     framesRef.current[index] = entry;
     return () => { if (framesRef.current[index] === entry) delete framesRef.current[index]; };
   }, [index, framesRef]);
@@ -106,17 +107,17 @@ function FilmFrame({ url, index, total, riverCurve, framesRef }) {
     <group ref={group} position={pose.position} quaternion={pose.rotation} visible={false}>
       <mesh position={[0, 0, -CONFIG.PHOTO_DEPTH / 2]}>
         <boxGeometry args={[CONFIG.PHOTO_WIDTH, CONFIG.PHOTO_HEIGHT, CONFIG.PHOTO_DEPTH]} />
-        <meshStandardMaterial ref={backing} color="#18202c" roughness={0.55} metalness={0.15} transparent opacity={0} />
+        <meshStandardMaterial ref={backing} color="#18202c" roughness={0.55} metalness={0.15} transparent opacity={0} depthWrite={false} />
       </mesh>
-      <Image ref={image} url={url} position={[0, 0, 0.006]} scale={[4, 3]} transparent opacity={0} toneMapped={false} />
+      <Image ref={image} url={url} position={[0, 0, 0.006]} scale={[4, 3]} transparent opacity={0} depthWrite={false} toneMapped={false} />
     </group>
   );
 }
 
-// 使用含外框的屏幕包围盒，优先保留近处照片，避免远处内容被压在后面。
+// 保留已显示照片的优先级，并在接近重叠之前渐隐，避免边界反复闪烁。
 function PhotoVisibility({ framesRef }) {
   const { camera, size } = useThree();
-  const scratch = useMemo(() => ({ point: new THREE.Vector3(), view: new THREE.Vector3() }), []);
+  const scratch = useMemo(() => ({ point: new THREE.Vector3(), view: new THREE.Vector3(), nextOrder: 0 }), []);
   useFrame((_, delta) => {
     camera.updateMatrixWorld();
     const candidates = [];
@@ -143,28 +144,14 @@ function PhotoVisibility({ framesRef }) {
       const distance = camera.position.distanceTo(root.position);
       if (!valid || right < 0 || left > size.width || bottom < 0 || top > size.height || distance > 75) {
         root.visible = false;
+        entry.selected = false;
         entry.opacity = 0;
         continue;
       }
       candidates.push({ entry, left, right, top, bottom, distance });
     }
-    candidates.sort((a, b) => a.distance - b.distance);
-    const occupied = [];
-    const gap = CONFIG.SCREEN_GAP_PX;
-    for (const candidate of candidates) {
-      const { entry, distance } = candidate;
-      const overlaps = occupied.some((box) =>
-        candidate.left < box.right + gap && candidate.right > box.left - gap &&
-        candidate.top < box.bottom + gap && candidate.bottom > box.top - gap
-      );
-      if (overlaps) {
-        entry.group.visible = false;
-        entry.opacity = 0;
-        continue;
-      }
-      occupied.push(candidate);
-      const targetOpacity = 1 - THREE.MathUtils.smoothstep(distance, 48, 75);
-      entry.opacity = THREE.MathUtils.damp(entry.opacity, targetOpacity, 6, delta);
+    updatePhotoSelection(candidates, scratch, CONFIG.SCREEN_GAP_PX, delta);
+    for (const { entry } of candidates) {
       entry.group.visible = entry.opacity > 0.005;
       entry.image.material.opacity = entry.opacity;
       entry.backing.opacity = entry.opacity;
