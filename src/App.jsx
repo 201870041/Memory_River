@@ -22,21 +22,28 @@ const CONFIG = {
   LOOK_AHEAD: 1.5,
   CAMERA_RESPONSE: 5,
   SCREEN_GAP_PX: 12,
+  MIN_WAVE_CYCLES: 1.1,
+  MAX_WAVE_CYCLES: 7,
+  PHOTOS_PER_WAVE: 30,
+  LATERAL_SWAY: 0.85,
 };
 
 // 连续、低频、非共面的曲线；照片数量只影响长度和缓弯次数。
 const createRiverPath = (photoCount) => {
   const count = Math.max(2, photoCount);
   const desiredLength = CONFIG.PHOTO_SPACING * (count - 1);
-  const waveCycles = Math.min(6, Math.max(0.55, photoCount / 45));
-  const amplitude = Math.min(12, Math.max(2, Math.sqrt(desiredLength) * 0.65));
+  const waveCycles = Math.min(
+    CONFIG.MAX_WAVE_CYCLES,
+    Math.max(CONFIG.MIN_WAVE_CYCLES, photoCount / CONFIG.PHOTOS_PER_WAVE)
+  );
+  const amplitude = Math.min(16, Math.max(2, Math.sqrt(desiredLength) * CONFIG.LATERAL_SWAY));
   const height = Math.min(5, Math.max(1, Math.sqrt(desiredLength) * 0.23));
   const sampleCount = Math.min(2048, Math.max(128, count * 4));
   const points = Array.from({ length: sampleCount + 1 }, (_, i) => {
     const t = i / sampleCount;
     const phase = t * Math.PI * 2;
     return new THREE.Vector3(
-      amplitude * (Math.sin(phase * waveCycles) + 0.16 * Math.sin(phase * waveCycles * 1.8 + 0.7)),
+      amplitude * (Math.sin(phase * waveCycles) + 0.2 * Math.sin(phase * waveCycles * 1.55 + 0.7)),
       height * (Math.sin(phase * waveCycles * 0.63 + 0.4) + 0.25 * Math.sin(phase * 1.3)),
       (t - 0.5) * desiredLength
     );
