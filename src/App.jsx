@@ -1,3 +1,4 @@
+import GalaxyFinale from "./GalaxyFinale.jsx";
 import { CONFIG, createRiverPath, createPhotoPose } from "./photoRiver.js";
 import React, { useState, useRef, useEffect, useMemo, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -26,106 +27,12 @@ function FilmFrame({ url, index, total, riverCurve }) {
   );
 }
 
-// 3. 终点烟花：一组柔和小光点，避免大球体下坠的观感。
-function Fireworks({ progress, cameraPosition }) {
-  const particles = useRef([]);
-  const hasTriggered = useRef(false);
-  const geometry = useRef();
-  const data = useMemo(() => ({
-    positions: new Float32Array(1200 * 3),
-    colors: new Float32Array(1200 * 3),
-  }), []);
-  const glowTexture = useMemo(() => {
-    const size = 32;
-    const pixels = new Uint8Array(size * size * 4);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const radius = Math.hypot((x + 0.5) / size * 2 - 1, (y + 0.5) / size * 2 - 1);
-        const offset = (y * size + x) * 4;
-        pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = 255;
-        pixels[offset + 3] = Math.round(Math.max(0, 1 - radius) ** 2 * 255);
-      }
-    }
-    const texture = new THREE.DataTexture(pixels, size, size, THREE.RGBAFormat);
-    texture.magFilter = THREE.LinearFilter;
-    texture.minFilter = THREE.LinearFilter;
-    texture.needsUpdate = true;
-    return texture;
-  }, []);
-  useEffect(() => () => glowTexture.dispose(), [glowTexture]);
-
-  useEffect(() => {
-    if (progress <= 0.95 || hasTriggered.current || !cameraPosition) return;
-    hasTriggered.current = true;
-    const result = [];
-    for (let f = 0; f < 8; f++) {
-      const center = cameraPosition.clone().add(new THREE.Vector3(
-        (Math.random() - 0.5) * 20,
-        5 + Math.random() * 10,
-        15 + Math.random() * 10
-      ));
-      const color = new THREE.Color().setHSL(Math.random(), 0.7, 0.7);
-      for (let i = 0; i < 150; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const cosPhi = Math.random() * 2 - 1;
-        const sinPhi = Math.sqrt(1 - cosPhi * cosPhi);
-        const speed = 3 + Math.random() * 5;
-        result.push({
-          position: center.clone(),
-          velocity: new THREE.Vector3(sinPhi * Math.cos(theta), cosPhi, sinPhi * Math.sin(theta)).multiplyScalar(speed),
-          color, life: 1, delay: f * 0.2, age: 0,
-        });
-      }
-    }
-    particles.current = result;
-  }, [progress, cameraPosition]);
-
-  useFrame((_, delta) => {
-    if (!geometry.current || particles.current.length === 0) return;
-    const dt = Math.min(delta, 0.05);
-    particles.current.forEach((p, i) => {
-      p.age += dt;
-      if (p.age < p.delay) return;
-      p.life = Math.max(0, p.life - dt * 0.5);
-      p.position.addScaledVector(p.velocity, dt);
-      p.velocity.y -= 3 * dt;
-      p.velocity.multiplyScalar(Math.exp(-1.2 * dt));
-      const offset = i * 3;
-      data.positions[offset] = p.position.x;
-      data.positions[offset + 1] = p.position.y;
-      data.positions[offset + 2] = p.position.z;
-      data.colors[offset] = p.color.r * p.life;
-      data.colors[offset + 1] = p.color.g * p.life;
-      data.colors[offset + 2] = p.color.b * p.life;
-    });
-    geometry.current.attributes.position.needsUpdate = true;
-    geometry.current.attributes.color.needsUpdate = true;
-    if (particles.current.every((p) => p.life <= 0)) particles.current = [];
-  });
-
-  return (
-    <points frustumCulled={false}>
-      <bufferGeometry ref={geometry}>
-        <bufferAttribute attach="attributes-position" args={[data.positions, 3]} />
-        <bufferAttribute attach="attributes-color" args={[data.colors, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        map={glowTexture} size={0.16} sizeAttenuation vertexColors
-        transparent opacity={0.8} depthWrite={false} toneMapped={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </points>
-  );
-}
-
 // 4. 轨道控制器
 function RailController({
   backgroundRefs,
-  explosionRef,
   riverCurve,
   riverLength,
-  onProgressChange,
-  onCameraUpdate,
+  journeyRef,
 }) {
   const { camera, gl } = useThree();
   const assetsLoading = useProgress((state) => state.active);
@@ -164,20 +71,9 @@ function RailController({
 
     backgroundRefs.forEach((ref) => {
       if (ref.current) {
-        ref.current.material.opacity = 0.2 + brightness * 1.2;
-        ref.current.scale.setScalar(1 + s.progress * 0.3);
+        ref.current.material.opacity = 0.12 + brightness * 0.2;
       }
     });
-
-    if (explosionRef.current) {
-      if (s.progress > 0.95) {
-        const explosionProgress = (s.progress - 0.95) / 0.05;
-        explosionRef.current.material.opacity = explosionProgress * 2.0;
-        explosionRef.current.scale.setScalar(1 + explosionProgress * 0.5);
-      } else {
-        explosionRef.current.material.opacity = 0;
-      }
-    }
 
     const point = riverCurve.getPointAt(s.progress);
     const tangent = riverCurve.getTangentAt(s.progress).normalize();
@@ -195,13 +91,7 @@ function RailController({
     camera.userData.lookAtTarget.lerp(targetLook, alpha);
     camera.lookAt(camera.userData.lookAtTarget);
 
-    // UI 无需每帧触发 React 更新。
-    state.current.uiElapsed = (state.current.uiElapsed || 0) + delta;
-    if (state.current.uiElapsed >= 0.1) {
-      state.current.uiElapsed = 0;
-      onProgressChange?.(s.progress);
-      onCameraUpdate?.(camera.position.clone());
-    }
+    journeyRef.current.progress = s.progress;
   }, -2);
 
   return null;
@@ -259,13 +149,11 @@ function MusicPlayer({ url }) {
 export default function App() {
   const [imageUrls, setImageUrls] = useState([]);
   const [musicUrl, setMusicUrl] = useState(null);
-  const [journeyProgress, setJourneyProgress] = useState(0);
-  const [cameraPos, setCameraPos] = useState(null);
+  const journeyRef = useRef({ progress: 0 });
 
   const cyanRef = useRef();
   const pinkRef = useRef();
   const purpleRef = useRef();
-  const explosionRef = useRef();
 
   // 根据照片数量动态生成河流
   const riverData = useMemo(() => {
@@ -369,8 +257,6 @@ export default function App() {
     );
   }
 
-  const endPosition = riverData.curve.getPointAt(0.95);
-
   return (
     <div style={{ height: "100vh", background: "black", width: "100vw" }}>
       <MusicPlayer url={musicUrl} />
@@ -451,30 +337,14 @@ export default function App() {
           mix={0.8}
         />
 
-        <Sparkles
-          ref={explosionRef}
-          position={[endPosition.x, endPosition.y + 5, endPosition.z]}
-          count={2000}
-          scale={40}
-          size={6}
-          speed={4}
-          opacity={0}
-          color="#ffdd00"
-          mixColor="#ffffff"
-          mix={0.5}
-          noise={0.5}
-        />
-
         <RailController
           backgroundRefs={[cyanRef, pinkRef, purpleRef]}
-          explosionRef={explosionRef}
           riverCurve={riverData.curve}
           riverLength={riverData.riverLength}
-          onProgressChange={setJourneyProgress}
-          onCameraUpdate={setCameraPos}
+          journeyRef={journeyRef}
         />
 
-        <Fireworks progress={journeyProgress} cameraPosition={cameraPos} />
+        <GalaxyFinale riverCurve={riverData.curve} photoCount={imageUrls.length} journeyRef={journeyRef} />
 
         <Suspense fallback={<Html center style={{ color: "white", whiteSpace: "nowrap" }}>Loading photos…</Html>}>
           {imageUrls.map((url, index) => (

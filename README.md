@@ -1,6 +1,6 @@
 # Memory River
 
-A complete React + Three.js project featuring a winding photo river, a scroll-controlled camera, background music, and a soft particle fireworks finale.
+A complete React + Three.js project featuring a winding photo river, a scroll-controlled camera, background music, and a spiral galaxy finale at the final photo.
 
 The current version includes broader river bends, a camera distance of 8, a camera height of 6, a baseline photo spacing of 4.6, and a continuous photo sequence in upload order. Photos stay fixed and opaque along the river; camera movement no longer triggers visibility selection or fade-in.
 
@@ -22,6 +22,8 @@ Do not mix this project's entry files with an older template's `src/index.js` or
 ## Project Files
 
 - `src/App.jsx`: Main application, including photo placement, river geometry, camera movement, and particle effects.
+- `src/GalaxyFinale.jsx`: Animated spiral galaxy, star glow, and dust layers behind the final photo.
+- `src/galaxy.js`: Seeded galaxy geometry and final-photo trigger logic.
 - `src/photoRiver.js`: Shared layout settings, the winding path, fixed photo poses, and frame clearance checks.
 - `src/index.jsx`: React entry point.
 - `src/styles.css`: Global styles.
@@ -30,6 +32,7 @@ Do not mix this project's entry files with an older template's `src/index.js` or
 - `package.json` / `package-lock.json`: Dependencies and application commands.
 - `vite.config.js`: Development server configuration.
 - `.codesandbox/tasks.json`: CodeSandbox development task.
+- `scripts/galaxy.test.js`: Regression tests for the finale trigger and stable galaxy geometry.
 - `scripts/river-layout.test.js`: Regression tests for photo order, stable poses, and frame clearance.
 - `scripts/package-project.py`: Rebuilds the CodeSandbox ZIP archive from the current source files.
 
@@ -47,7 +50,7 @@ Build the production application with `npm run build`. The output is written to 
 Run the river layout regression tests:
 
 ```sh
-node --test scripts/river-layout.test.js
+node --test scripts/*.test.js
 ```
 
 Rebuild the upload archive with Python:
@@ -76,6 +79,12 @@ Working branch: `main`. The original `Reverie` repository is retained; subsequen
 The local project is connected to the remote repository. Changes requested in this chat are checked, committed, and pushed to the working branch. Use the same branch in CodeSandbox and pull the latest commits.
 
 There is no background file watcher, automatic commit service, or automatic push service. Each synchronization requires a Git commit and push.
+
+## Galaxy Finale
+
+The galaxy begins fading in when the camera reaches the final photo's position. It features five spiral arms, 16,000 stars, and 3,500 soft dust particles. The galaxy sits behind the final image, which remains visible. It stays present while you rest at the endpoint and fades out when you scroll back.
+
+For a single-photo journey, the trigger uses that photo's midpoint position rather than the end of the empty path. The galaxy replaces the previous fireworks finale.
 
 ## Photos and Music
 
